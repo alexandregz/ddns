@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Configuración
+USER=""
+PASS=""
+DOMAIN="xxx.com"
+HOSTNAME="xxx"
+CACHE_FILE="/tmp/ultima_ip_dns.txt"
+
+# 1. Obter a IP pública actual
+IP_ACTUAL=$(curl -s https://api.ipify.org)
+
+# Comprobar que obtivemos unha IP válida
+if [[ -z "$IP_ACTUAL" ]]; then
+    echo "Erro: Non se puido obter a IP pública."
+    exit 1
+fi
+
+# 2. Ler a IP anterior gardada (se existe)
+IP_ANTERIOR=""
+if [[ -f "$CACHE_FILE" ]]; then
+    IP_ANTERIOR=$(cat "$CACHE_FILE")
+fi
+
+# 3. Actualizar só se a IP cambiou
+if [[ "$IP_ACTUAL" != "$IP_ANTERIOR" ]]; then
+    echo "Cambio detectado ($IP_ANTERIOR -> $IP_ACTUAL). Actualizando Dinahosting..."
+    
+    RESPOSTA=$(curl -s -G "https://dinahosting.com/special/api.php" \
+        --data-urlencode "AUTH_USER=$USER" \
+        --data-urlencode "AUTH_PWD=$PASS" \
+        --data-urlencode "domain=$DOMAIN" \
+        --data-urlencode "hostname=$HOSTNAME" \
+        --data-urlencode "ip=$IP_ACTUAL" \
+        --data-urlencode "oldIp=" \
+        --data-urlencode "command=Domain_Zone_UpdateTypeA")
+    
+    echo "Resposta da API: $RESPOSTA"
+    
+    # Gardar a nova IP na caché
+    echo "$IP_ACTUAL" > "$CACHE_FILE"
+else
+    echo "A IP non cambiou ($IP_ACTUAL). Non se require actualización."
+fi
