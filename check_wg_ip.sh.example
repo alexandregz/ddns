@@ -1,0 +1,42 @@
+#!/bin/bash
+
+#DOMINIO="xxxxx.xxxxxx.com"
+# proba para ver que falla
+DOMINIO="1.1.1.1"
+ESTADO_ANTERIOR="/tmp/wg_ip_status"
+
+# Credenciais de Telegram
+TG_TOKEN="xxxxx:xxxxx"
+TG_CHAT_ID="123456789"
+
+enviar_telegram() {
+    local MENSAXE="$1"
+    curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+        -d chat_id="${TG_CHAT_ID}" \
+        -d parse_mode="HTML" \
+        --data-urlencode text="${MENSAXE}" > /dev/null
+}
+
+# Obter IP pública real e IP resolta polo DDNS
+IP_REAL=$(curl -s --max-time 10 ifconfig.me)
+IP_DNS=$(dig +short "$DOMINIO" | tail -n1)
+
+# Se non hai conexión a internet, saír sen falso positivo
+[ -z "$IP_REAL" ] && exit 0
+
+if [ "$IP_REAL" != "$IP_DNS" ]; then
+    if [ ! -f "$ESTADO_ANTERIOR" ] || [ "$(cat "$ESTADO_ANTERIOR")" != "ERROR" ]; then
+        MSG="🚨 <b>Alerta WireGuard (Raspberry Pi)</b>%0A%0AA IP pública real (<code>$IP_REAL</code>) non coincide co DNS (<code>$IP_DNS</code>). Posible activación de CG-NAT ou fallo no DDNS."
+        logger -t wireguard-watch "ALERTA: IP real ($IP_REAL) non coincide con DNS ($IP_DNS)."
+        enviar_telegram "$(printf '%b' "$MSG")"
+        echo "ERROR" > "$ESTADO_ANTERIOR"
+    fi
+else
+    if [ -f "$ESTADO_ANTERIOR" ] && [ "$(cat "$ESTADO_ANTERIOR")" == "ERROR" ]; then
+        MSG="✅ <b>WireGuard Recuperado</b>%0A%0AA IP pública real (<code>$IP_REAL</code>) volve coincidir co dominio <code>$DOMINIO</code>."
+        logger -t wireguard-watch "RECUPERADO: IP real ($IP_REAL) coincide de novo con DNS."
+        enviar_telegram "$(printf '%b' "$MSG")"
+    fi
+    echo "OK" > "$ESTADO_ANTERIOR"
+fi
+
